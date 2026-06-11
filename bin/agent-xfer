@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+PYTHON="${AGENT_XFER_PYTHON:-python3}"
+exec "$PYTHON" -m agent_xfer "$@"
