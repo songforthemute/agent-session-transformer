@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-xfer"
+version = "0.1.0"
+description = "Cross-agent session handoff CLI for local coding agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "agent-xfer contributors" }
+]
+keywords = ["agent", "handoff", "codex", "claude", "grok", "antigravity", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development",
+]
+dependencies = []
+
+[project.scripts]
+agent-xfer = "agent_xfer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_xfer*"]
