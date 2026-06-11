@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-06-10T08:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Bridge smoke test. Remember token CLAUDE_BRIDGE_SMOKE_EPSILON."}]}}
+{"type":"assistant","timestamp":"2026-06-10T08:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"CLAUDE_BRIDGE_SMOKE_EPSILON"}]}}
+{"type":"user","timestamp":"2026-06-10T08:01:00Z","message":{"role":"user","content":"What exact token were you asked to remember?"}}
+{"type":"assistant","timestamp":"2026-06-10T08:01:01Z","message":{"role":"assistant","content":"CLAUDE_BRIDGE_SMOKE_EPSILON"}}
