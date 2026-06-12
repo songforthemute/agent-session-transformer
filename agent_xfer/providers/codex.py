@@ -110,8 +110,9 @@ class CodexAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
-        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path)
-        result = run_command(["codex", "exec", "resume", target_id, prompt], cwd=cwd)
+        args = ["codex", "exec", "resume", target_id, prompt]
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path, argv=args)
+        result = run_command(args, cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"codex exec resume failed with exit {result.returncode}: {result.stderr.strip()}")
         return SendResult(

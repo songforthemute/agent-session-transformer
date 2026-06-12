@@ -976,7 +976,7 @@ pytest -m live_claude
 - `sync --confirm`.
 - checkpoint duplicate guard. 현재 checkpoint는 `last_source_range`를 기록해 `--range since-last` incremental handoff의 기준점으로 사용된다.
 - local live smoke 문서화. 현재 단일 case와 matrix file(`scripts/live-smoke.sh --matrix`)을 지원한다.
-- target prompt argv guard. 현재 `AGENT_XFER_PROMPT_ARG_MAX`를 초과하면 provider CLI 호출 전 안전하게 실패한다.
+- target prompt argv guard. 현재 UTF-8 argv byte 크기가 `AGENT_XFER_PROMPT_ARG_MAX`를 초과하면 provider CLI 호출 전 안전하게 실패한다.
 
 ### v0.3.0: Robust provider support
 
@@ -1022,7 +1022,7 @@ pytest -m live_claude
 ## 12. 남은 질문
 
 - Codex app-server protocol을 CLI에서 장시간 띄울 때 timeout/retry 정책은 어떻게 둘 것인가? 현재 one-shot command read에 `AGENT_XFER_CODEX_APP_SERVER_TIMEOUT`/`AGENT_XFER_CODEX_APP_SERVER_RETRIES`를 제공한다.
-- target prompt를 argv로 넘길 때 길이 제한에 걸리면 provider별 stdin/tempfile 대체 경로가 있는가? 현재는 `AGENT_XFER_PROMPT_ARG_MAX` guard로 provider CLI 호출 전 실패시킨다.
+- target prompt를 argv로 넘길 때 길이 제한에 걸리면 provider별 stdin/tempfile 대체 경로가 있는가? 현재는 UTF-8 argv byte 기준 `AGENT_XFER_PROMPT_ARG_MAX` guard로 provider CLI 호출 전 실패시킨다.
 - redaction strict mode에서 내부 path를 어디까지 보존할 것인가?
 - `sources`/`targets` command가 provider별 session list를 어느 깊이까지 지원해야 하는가? 현재 `sources --deep`은 Grok `sessions --json`과 Antigravity brain transcript directory를 지원한다.
 - Claude SDK의 실제 method 이름과 auth behavior를 구현 시점에 어떤 version에 pin할 것인가?

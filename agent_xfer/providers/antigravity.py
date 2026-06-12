@@ -132,8 +132,9 @@ class AntigravityAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
-        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path)
-        result = run_command(["agy", "--conversation", target_id, "--print", prompt, "--print-timeout", "30s"], cwd=cwd)
+        args = ["agy", "--conversation", target_id, "--print", prompt, "--print-timeout", "30s"]
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path, argv=args)
+        result = run_command(args, cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"agy conversation print failed with exit {result.returncode}: {result.stderr.strip()}")
         return SendResult(

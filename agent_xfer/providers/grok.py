@@ -93,8 +93,9 @@ class GrokAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
-        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path)
-        result = run_command(["grok", "-r", target_id, "-p", prompt, "--cwd", str(cwd)], cwd=cwd)
+        args = ["grok", "-r", target_id, "-p", prompt, "--cwd", str(cwd)]
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path, argv=args)
+        result = run_command(args, cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"grok resume failed with exit {result.returncode}: {result.stderr.strip()}")
         return SendResult(

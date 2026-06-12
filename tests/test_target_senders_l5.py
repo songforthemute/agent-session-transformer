@@ -7,6 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from agent_xfer.providers.codex import CodexAdapter
+from agent_xfer.subprocesses.prompt_transport import ensure_prompt_fits_argv
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -111,4 +116,33 @@ def test_sender_blocks_oversized_argv_prompt_before_invoking_provider(tmp_path: 
     payload = json.loads(result.stdout)
     assert payload["code"] == "OPERATION_FAILED"
     assert "AGENT_XFER_PROMPT_ARG_MAX=10" in payload["message"]
+    assert not log_path.exists()
+
+
+def test_prompt_argv_guard_counts_utf8_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_XFER_PROMPT_ARG_MAX", "5")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        ensure_prompt_fits_argv("한글", provider="codex")
+
+    assert "6 bytes" in str(exc_info.value)
+    assert "AGENT_XFER_PROMPT_ARG_MAX=5" in str(exc_info.value)
+
+
+def test_codex_sender_guard_includes_argv_overhead(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_path = tmp_path / "codex.json"
+    _write_recorder(fake_bin / "codex", "codex", log_path)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("AGENT_XFER_PROMPT_ARG_MAX", "9")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        CodexAdapter().send_handoff("thread-1", "ok", tmp_path, tmp_path / "target.prompt.md")
+
+    assert "argv is" in str(exc_info.value)
+    assert "prompt is 2 bytes" in str(exc_info.value)
+    assert "AGENT_XFER_PROMPT_ARG_MAX=9" in str(exc_info.value)
     assert not log_path.exists()
