@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
 from agent_xfer.core.ids import ID_KINDS
 from agent_xfer.providers.antigravity import antigravity_home, find_last_conversation_for_cwd
@@ -21,14 +24,64 @@ def _entry(provider: str, ident: str | None, available: bool, reason: str, *, cw
     }
 
 
-def discover_sources(cwd: Path) -> list[dict[str, Any]]:
+def _grok_session_entries(cwd: Path) -> list[dict[str, Any]]:
+    if shutil.which("grok") is None:
+        return []
+    try:
+        completed = subprocess.run(["grok", "sessions", "--json"], cwd=cwd, text=True, capture_output=True, check=False, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0:
+        return []
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(payload, dict):
+        sessions = payload.get("sessions", [])
+    else:
+        sessions = payload
+    results: list[dict[str, Any]] = []
+    if not isinstance(sessions, list):
+        return results
+    for item in sessions:
+        if not isinstance(item, dict):
+            continue
+        ident = item.get("id") or item.get("session_id") or item.get("sessionId")
+        if isinstance(ident, str) and ident:
+            results.append(_entry("grok", ident, True, "grok sessions --json", cwd=cwd, path=None))
+    return results
+
+
+def _antigravity_brain_entries(cwd: Path) -> list[dict[str, Any]]:
+    brain = antigravity_home() / "brain"
+    if not brain.is_dir():
+        return []
+    results: list[dict[str, Any]] = []
+    for child in sorted(brain.iterdir()):
+        if not child.is_dir():
+            continue
+        logs = child / ".system_generated" / "logs"
+        transcript = logs / "transcript_full.jsonl"
+        if not transcript.exists():
+            transcript = logs / "transcript.jsonl"
+        if transcript.exists():
+            results.append(_entry("antigravity", child.name, True, "found Antigravity transcript under brain/", cwd=cwd, path=str(transcript)))
+    return results
+
+
+def discover_sources(cwd: Path, deep: bool = False) -> list[dict[str, Any]]:
     cwd = cwd.resolve()
     results: list[dict[str, Any]] = [
         _entry("fake", "source-1", True, "built-in deterministic fake source", cwd=cwd)
     ]
 
     grok_cli = shutil.which("grok")
-    results.append(_entry("grok", None, grok_cli is not None, "grok CLI found; provide grok:<session_id> manually" if grok_cli else "grok CLI not found", cwd=cwd))
+    grok_deep = _grok_session_entries(cwd) if deep else []
+    if grok_deep:
+        results.extend(grok_deep)
+    else:
+        results.append(_entry("grok", None, grok_cli is not None, "grok CLI found; provide grok:<session_id> manually" if grok_cli else "grok CLI not found", cwd=cwd))
 
     codex_payload = os.environ.get("AGENT_XFER_CODEX_THREAD_READ_JSON")
     codex_app_server = os.environ.get("AGENT_XFER_CODEX_APP_SERVER_COMMAND")
@@ -59,6 +112,11 @@ def discover_sources(cwd: Path) -> list[dict[str, Any]]:
             path=str(last_conversations),
         )
     )
+    if deep:
+        known_ag_ids = {item["id"] for item in results if item["provider"] == "antigravity" and item.get("id")}
+        for item in _antigravity_brain_entries(cwd):
+            if item.get("id") not in known_ag_ids:
+                results.append(item)
 
     claude_transcript = os.environ.get("AGENT_XFER_CLAUDE_TRANSCRIPT")
     claude_available = bool(claude_transcript) or claude_config_dir().exists()

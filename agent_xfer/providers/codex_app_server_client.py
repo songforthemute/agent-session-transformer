@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -13,6 +14,22 @@ class AppServerReadResult:
     payload: dict[str, Any]
     command: list[str]
     stderr: str
+
+
+def app_server_timeout() -> int:
+    value = os.environ.get("AGENT_XFER_CODEX_APP_SERVER_TIMEOUT", "30")
+    try:
+        return max(int(value), 1)
+    except ValueError:
+        return 30
+
+
+def app_server_retries() -> int:
+    value = os.environ.get("AGENT_XFER_CODEX_APP_SERVER_RETRIES", "0")
+    try:
+        return max(int(value), 0)
+    except ValueError:
+        return 0
 
 
 def _decode_response(stdout: str) -> dict[str, Any]:
@@ -38,30 +55,37 @@ def _decode_response(stdout: str) -> dict[str, Any]:
     raise RuntimeError("Codex app-server returned no JSON response")
 
 
-def read_thread_via_app_server(command: str, thread_id: str, cwd: Path, timeout: int = 30) -> AppServerReadResult:
+def read_thread_via_app_server(command: str, thread_id: str, cwd: Path, timeout: int | None = None, retries: int | None = None) -> AppServerReadResult:
     args = shlex.split(command)
     if not args:
         raise RuntimeError("Codex app-server command is empty")
+    timeout = app_server_timeout() if timeout is None else timeout
+    retries = app_server_retries() if retries is None else retries
     request = {
         "jsonrpc": "2.0",
         "id": 1,
         "method": "thread/read",
         "params": {"threadId": thread_id, "includeTurns": True, "path": str(cwd)},
     }
-    try:
-        completed = subprocess.run(
-            args,
-            input=json.dumps(request, ensure_ascii=False) + "\n",
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"Codex app-server command not found: {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Codex app-server timed out after {timeout}s") from exc
-    if completed.returncode != 0:
-        raise RuntimeError(f"Codex app-server exited {completed.returncode}: {completed.stderr.strip()}")
-    return AppServerReadResult(payload=_decode_response(completed.stdout), command=args, stderr=completed.stderr.strip())
+    last_error: RuntimeError | None = None
+    for attempt in range(retries + 1):
+        try:
+            completed = subprocess.run(
+                args,
+                input=json.dumps(request, ensure_ascii=False) + "\n",
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"Codex app-server command not found: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            last_error = RuntimeError(f"Codex app-server timed out after {timeout}s on attempt {attempt + 1}")
+            continue
+        if completed.returncode == 0:
+            return AppServerReadResult(payload=_decode_response(completed.stdout), command=args, stderr=completed.stderr.strip())
+        last_error = RuntimeError(f"Codex app-server exited {completed.returncode} on attempt {attempt + 1}: {completed.stderr.strip()}")
+    assert last_error is not None
+    raise last_error

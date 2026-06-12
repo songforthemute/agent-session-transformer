@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,35 @@ def test_sync_confirm_writes_checkpoint_and_blocks_duplicate(tmp_path: Path) -> 
     assert second.returncode == 2
     duplicate = json.loads(second.stdout)
     assert duplicate["code"] == "DUPLICATE_HANDOFF_BLOCKED"
+
+
+def test_cli_json_reports_missing_transcript_without_traceback(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "empty-claude")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_xfer",
+            "--json",
+            "inspect",
+            "--source",
+            "claude:missing-session",
+            "--cwd",
+            str(tmp_path),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "LOCAL_TRANSCRIPT_NOT_FOUND"
+    assert "Traceback" not in result.stderr
 
 
 def test_sh_wrapper_matches_python_module(tmp_path: Path) -> None:
@@ -236,3 +266,18 @@ def test_export_writes_requested_bundle_and_prompt_paths_without_checkpoint(tmp_
     }
     assert "# Agent Handoff" in prompt_out.read_text(encoding="utf-8")
     assert not (tmp_path / ".agent-xfer" / "checkpoints").exists()
+
+
+def test_live_smoke_script_matrix_runs_dry_run_rows(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    matrix = tmp_path / "matrix.txt"
+    matrix.write_text(f"# comment\nfake:source-1 fake:target-1 {tmp_path}\n", encoding="utf-8")
+    result = subprocess.run(
+        [str(root / "scripts" / "live-smoke.sh"), "--matrix", str(matrix)],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "handoff_id" in result.stdout

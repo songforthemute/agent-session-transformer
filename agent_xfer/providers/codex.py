@@ -8,6 +8,7 @@ from pathlib import Path
 from agent_xfer.core.models import InspectResult, ProviderCapabilities, ReadSessionResult, SendResult
 from agent_xfer.parsing.codex_app_server import parse_codex_thread_read
 from agent_xfer.providers.codex_app_server_client import read_thread_via_app_server
+from agent_xfer.subprocesses.prompt_transport import ensure_prompt_fits_argv
 from agent_xfer.subprocesses.runner import run_command
 
 
@@ -109,7 +110,9 @@ class CodexAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
-        result = run_command(["codex", "exec", "resume", target_id, prompt], cwd=cwd)
+        args = ["codex", "exec", "resume", target_id, prompt]
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path, argv=args)
+        result = run_command(args, cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"codex exec resume failed with exit {result.returncode}: {result.stderr.strip()}")
         return SendResult(

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agent_xfer.core.models import InspectResult, ProviderCapabilities, ReadSessionResult, SendResult
 from agent_xfer.parsing.claude import parse_claude_jsonl
+from agent_xfer.subprocesses.prompt_transport import ensure_prompt_fits_argv
 from agent_xfer.subprocesses.runner import run_command
 
 
@@ -20,7 +21,7 @@ def _encoded_project_path(cwd: Path) -> str:
     # Claude Code project directories are path-derived. This fallback matches the
     # commonly observed dash-encoded absolute path and remains secondary to the
     # explicit AGENT_XFER_CLAUDE_TRANSCRIPT override used by tests and scripts.
-    return str(cwd.resolve()).replace("/", "-").strip("-")
+    return str(cwd.resolve()).replace("/", "-")
 
 
 def _write_prompt_artifact(path: Path | None, prompt: str) -> None:
@@ -100,7 +101,9 @@ class ClaudeAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
-        result = run_command(["claude", "--resume", target_id, "-p", prompt], cwd=cwd)
+        args = ["claude", "--resume", target_id, "-p", prompt]
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path, argv=args)
+        result = run_command(args, cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"claude resume failed with exit {result.returncode}: {result.stderr.strip()}")
         return SendResult(

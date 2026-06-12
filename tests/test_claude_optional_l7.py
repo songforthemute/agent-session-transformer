@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from agent_xfer.parsing.claude import parse_claude_jsonl
-from agent_xfer.providers.claude import ClaudeAdapter
+from agent_xfer.providers.claude import ClaudeAdapter, _encoded_project_path
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +22,13 @@ def test_parse_claude_jsonl_fixture() -> None:
     assert events[0].provider == "claude"
     assert "CLAUDE_BRIDGE_SMOKE_EPSILON" in events[0].content_text
     assert events[-1].content_text == "CLAUDE_BRIDGE_SMOKE_EPSILON"
+
+
+def test_claude_project_path_encoding_preserves_leading_dash(tmp_path: Path) -> None:
+    encoded = _encoded_project_path(tmp_path)
+
+    assert encoded.startswith("-")
+    assert encoded == str(tmp_path.resolve()).replace("/", "-")
 
 
 def test_claude_adapter_reads_transcript_from_env(tmp_path: Path, monkeypatch) -> None:
