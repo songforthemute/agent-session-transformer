@@ -38,6 +38,46 @@ SECRET_ENV_NAMES = {
     "GITHUB_TOKEN",
 }
 
+SECRET_JSON_KEYS = {
+    "api_key",
+    "apikey",
+    "access_token",
+    "auth_token",
+    "bearer_token",
+    "client_secret",
+    "github_token",
+    "oauth_token",
+    "openai_api_key",
+    "anthropic_api_key",
+    "password",
+    "passwd",
+    "private_key",
+    "refresh_token",
+    "secret",
+    "session_token",
+    "token",
+}
+
+SAFE_TOKEN_COUNT_KEYS = {"completion_tokens", "prompt_tokens", "total_tokens"}
+
+
+
+def _normalized_json_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+
+
+def _is_secret_json_key(key: str) -> bool:
+    normalized = _normalized_json_key(key)
+    if normalized in SAFE_TOKEN_COUNT_KEYS:
+        return False
+    if normalized in SECRET_JSON_KEYS:
+        return True
+    return normalized.endswith(("_api_key", "_password", "_private_key", "_secret", "_token"))
+
+
+def _record_json_secret_field(state: _RedactionState, key: str, value: Any) -> None:
+    state.record("json_secret_field", "dropped", f"{key}={value!r}")
+
 
 def _sample_hash(value: str) -> str:
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
@@ -173,7 +213,14 @@ def redact_json_value(value: Any, mode: str = "secrets") -> tuple[Any, _Redactio
         if isinstance(item, list):
             return [walk(child) for child in item]
         if isinstance(item, dict):
-            return {key: walk(child) for key, child in item.items()}
+            redacted_item: dict[Any, Any] = {}
+            for key, child in item.items():
+                if isinstance(key, str) and _is_secret_json_key(key):
+                    _record_json_secret_field(state, key, child)
+                    redacted_item[key] = "[REDACTED]"
+                    continue
+                redacted_item[key] = walk(child)
+            return redacted_item
         return item
 
     return walk(value), state

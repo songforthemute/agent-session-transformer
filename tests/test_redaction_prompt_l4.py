@@ -93,6 +93,41 @@ def test_redact_events_scrubs_structured_content_json() -> None:
     assert redacted[0].content_json["stdout"] == "TOKEN=[REDACTED]"
 
 
+def test_redact_events_drops_json_secret_fields_by_key() -> None:
+    event = NormalizedEvent(
+        event_id="e1",
+        provider="fake",
+        source_id="source",
+        sequence=0,
+        created_at="2026-06-11T00:00:00Z",
+        role="tool",
+        kind="tool_result",
+        content_text="summary without secrets",
+        content_json={
+            "api_key": "short-secret",
+            "password": "hunter2",
+            "nested": {"client_secret": {"value": "nested-secret"}},
+            "usage": {"total_tokens": 42, "prompt_tokens": 10},
+        },
+    )
+
+    redacted, report = redact_events([event], mode="secrets")
+    serialized_event = json.dumps(redacted[0].to_dict())
+    serialized_report = json.dumps(report.to_dict())
+
+    assert "short-secret" not in serialized_event
+    assert "hunter2" not in serialized_event
+    assert "nested-secret" not in serialized_event
+    assert "short-secret" not in serialized_report
+    assert redacted[0].content_json["api_key"] == "[REDACTED]"
+    assert redacted[0].content_json["password"] == "[REDACTED]"
+    assert redacted[0].content_json["nested"]["client_secret"] == "[REDACTED]"
+    assert redacted[0].content_json["usage"] == {"total_tokens": 42, "prompt_tokens": 10}
+    findings = {finding.kind: finding for finding in report.findings}
+    assert findings["json_secret_field"].count == 3
+    assert findings["json_secret_field"].sample_hash.startswith("sha256:")
+
+
 def test_render_prompt_respects_max_prompt_chars() -> None:
     events = [
         NormalizedEvent(
