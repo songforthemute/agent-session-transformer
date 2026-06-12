@@ -34,6 +34,17 @@ def test_redact_text_masks_common_secret_shapes() -> None:
     assert state.counts["high_entropy"] >= 1
 
 
+def test_redact_text_masks_standalone_provider_keys_and_export_env() -> None:
+    text = "my key is sk-liveabcdefghijklmnopqrstuvwxyz and export OPENAI_API_KEY=sk-test-exported"
+    redacted, state = redact_text(text, mode="secrets")
+
+    assert "sk-live" not in redacted
+    assert "sk-test-exported" not in redacted
+    assert "export OPENAI_API_KEY=[REDACTED]" in redacted
+    assert state.counts["provider_api_key"] == 1
+    assert state.counts["env_var"] == 1
+
+
 def test_redaction_report_uses_hash_samples_not_secret_values() -> None:
     event = NormalizedEvent(
         event_id="e1",
@@ -53,6 +64,33 @@ def test_redaction_report_uses_hash_samples_not_secret_values() -> None:
     assert "user@example.com" not in redacted[0].content_text
     assert "supersecretvalue" not in serialized
     assert all(finding.get("sample_hash", "").startswith("sha256:") for finding in data["findings"])
+
+
+def test_redact_events_scrubs_structured_content_json() -> None:
+    event = NormalizedEvent(
+        event_id="e1",
+        provider="fake",
+        source_id="source",
+        sequence=0,
+        created_at="2026-06-11T00:00:00Z",
+        role="tool",
+        kind="tool_result",
+        content_text="summary without secrets",
+        content_json={
+            "stdout": "TOKEN=supersecretvalue123456789",
+            "nested": ["contact user@example.com", {"path": "/Users/alice/project"}],
+        },
+    )
+
+    redacted, report = redact_events([event], mode="secrets")
+    serialized_event = json.dumps(redacted[0].to_dict())
+    serialized_report = json.dumps(report.to_dict())
+
+    assert "supersecretvalue" not in serialized_event
+    assert "user@example.com" not in serialized_event
+    assert "/Users/alice" not in serialized_event
+    assert "supersecretvalue" not in serialized_report
+    assert redacted[0].content_json["stdout"] == "TOKEN=[REDACTED]"
 
 
 def test_render_prompt_respects_max_prompt_chars() -> None:
@@ -108,3 +146,40 @@ def test_cli_dry_run_writes_budget_metadata(tmp_path: Path) -> None:
     assert len(prompt) <= 260
     assert bundle["prompt_budget"]["max_chars"] == 260
     assert bundle["prompt_budget"]["actual_chars"] == len(prompt)
+
+
+def test_prompt_budget_participates_in_handoff_identity(tmp_path: Path) -> None:
+    base_args = [
+        sys.executable,
+        "-m",
+        "agent_xfer",
+        "--json",
+        "dry-run",
+        "--from",
+        "fake:source-1",
+        "--to",
+        "fake:target-1",
+        "--cwd",
+        str(tmp_path),
+    ]
+    truncated = subprocess.run(
+        [*base_args, "--max-prompt-chars", "260"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    unbounded = subprocess.run(
+        base_args,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert truncated.returncode == 0, truncated.stderr + truncated.stdout
+    assert unbounded.returncode == 0, unbounded.stderr + unbounded.stdout
+    truncated_payload = json.loads(truncated.stdout)
+    unbounded_payload = json.loads(unbounded.stdout)
+    assert truncated_payload["handoff_id"] != unbounded_payload["handoff_id"]
+    assert truncated_payload["artifact_dir"] != unbounded_payload["artifact_dir"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,35 @@ def test_sync_confirm_writes_checkpoint_and_blocks_duplicate(tmp_path: Path) -> 
     assert second.returncode == 2
     duplicate = json.loads(second.stdout)
     assert duplicate["code"] == "DUPLICATE_HANDOFF_BLOCKED"
+
+
+def test_cli_json_reports_missing_transcript_without_traceback(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "empty-claude")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_xfer",
+            "--json",
+            "inspect",
+            "--source",
+            "claude:missing-session",
+            "--cwd",
+            str(tmp_path),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "LOCAL_TRANSCRIPT_NOT_FOUND"
+    assert "Traceback" not in result.stderr
 
 
 def test_sh_wrapper_matches_python_module(tmp_path: Path) -> None:

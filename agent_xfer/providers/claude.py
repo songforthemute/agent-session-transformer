@@ -21,7 +21,7 @@ def _encoded_project_path(cwd: Path) -> str:
     # Claude Code project directories are path-derived. This fallback matches the
     # commonly observed dash-encoded absolute path and remains secondary to the
     # explicit AGENT_XFER_CLAUDE_TRANSCRIPT override used by tests and scripts.
-    return str(cwd.resolve()).replace("/", "-").strip("-")
+    return str(cwd.resolve()).replace("/", "-")
 
 
 def _write_prompt_artifact(path: Path | None, prompt: str) -> None:

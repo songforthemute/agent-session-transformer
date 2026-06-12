@@ -70,6 +70,55 @@ def test_antigravity_adapter_resolves_last_alias_from_cwd_mapping(tmp_path: Path
     assert len([event for event in result.events if event.kind == "message"]) == 4
 
 
+def test_antigravity_alias_checkpoint_uses_resolved_conversation_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conversation_id = "9d61b187-4b6d-4e4d-b286-08a3a30454e5"
+    logs = tmp_path / "brain" / conversation_id / ".system_generated" / "logs"
+    logs.mkdir(parents=True)
+    transcript = FIXTURES / "antigravity" / "transcript_full.basic.jsonl"
+    (logs / "transcript_full.jsonl").write_text(
+        transcript.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "last_conversations.json").write_text(
+        json.dumps({str(tmp_path.resolve()): conversation_id}), encoding="utf-8"
+    )
+    env = os.environ.copy()
+    env["AGENT_XFER_ANTIGRAVITY_HOME"] = str(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_xfer",
+            "--json",
+            "sync",
+            "--from",
+            "antigravity:last",
+            "--to",
+            "fake:target-1",
+            "--cwd",
+            str(tmp_path),
+            "--confirm",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    checkpoint_path = Path(payload["checkpoint"])
+    assert f"antigravity__{conversation_id}" in checkpoint_path.name
+    assert "antigravity__last" not in checkpoint_path.name
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    assert checkpoint["source"]["id"] == conversation_id
+
+
 def test_antigravity_adapter_reads_env_transcript_override(tmp_path: Path, monkeypatch) -> None:
     transcript = tmp_path / "override.jsonl"
     transcript.write_text((FIXTURES / "antigravity" / "transcript_full.basic.jsonl").read_text(encoding="utf-8"), encoding="utf-8")

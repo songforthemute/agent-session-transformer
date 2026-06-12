@@ -96,14 +96,28 @@ def build_handoff(
     cwd = cwd.resolve()
     adapter = get_adapter(source.provider)
     read_result: ReadSessionResult = adapter.read_session(source.id, cwd)
-    selected_events, source_range = _select_events(read_result.events, range_mode, read_checkpoint(cwd, source, target))
+    resolved_source = ProviderRef(source.provider, read_result.source_id, read_result.id_kind)
+    selected_events, source_range = _select_events(
+        read_result.events, range_mode, read_checkpoint(cwd, resolved_source, target)
+    )
     redacted_events, redaction_report = redact_events(selected_events, redact_mode)
-    prompt = render_prompt(source, target, str(cwd), redacted_events, max_prompt_chars)
+    prompt = render_prompt(resolved_source, target, str(cwd), redacted_events, max_prompt_chars)
+    prompt_budget = {
+        "max_chars": max_prompt_chars,
+        "actual_chars": len(prompt),
+        "truncated": TRUNCATION_NOTICE in prompt,
+    }
     digest_payload = {
-        "source": {"provider": source.provider, "id": source.id, "id_kind": source.id_kind, "range": source_range},
+        "source": {
+            "provider": resolved_source.provider,
+            "id": resolved_source.id,
+            "id_kind": resolved_source.id_kind,
+            "range": source_range,
+        },
         "target": {"provider": target.provider, "id": target.id, "id_kind": target.id_kind},
         "events": [event.to_dict() for event in redacted_events],
         "prompt_renderer": PROMPT_RENDERER_VERSION,
+        "prompt_budget": prompt_budget,
     }
     handoff_id = canonical_digest(digest_payload)
     artifact_dir = _artifact_base(cwd, handoff_id)
@@ -112,9 +126,9 @@ def build_handoff(
         "created_at": utc_now(),
         "handoff_id": handoff_id,
         "source": {
-            "provider": source.provider,
-            "id": source.id,
-            "id_kind": source.id_kind,
+            "provider": resolved_source.provider,
+            "id": resolved_source.id,
+            "id_kind": resolved_source.id_kind,
             "cwd": str(cwd),
             "created_at": read_result.created_at,
             "updated_at": read_result.updated_at,
@@ -141,7 +155,7 @@ def build_handoff(
         "raw_artifact_references": read_result.raw_artifacts,
         "redaction_report": redaction_report.to_dict(),
         "generated_handoff_prompt": prompt,
-        "prompt_budget": {"max_chars": max_prompt_chars, "actual_chars": len(prompt), "truncated": TRUNCATION_NOTICE in prompt},
+        "prompt_budget": prompt_budget,
     }
     artifact_dir.mkdir(parents=True, exist_ok=True)
     write_json(artifact_dir / "handoff.json", bundle)
@@ -164,13 +178,26 @@ def sync(
         raise AgentXferError("CONFIRM_REQUIRED", "sync mutates the target and requires --confirm")
     bundle = build_handoff(source, target, cwd, max_prompt_chars=max_prompt_chars, range_mode=range_mode)
     cwd = cwd.resolve()
-    existing = read_checkpoint(cwd, source, target)
+    checkpoint_source = ProviderRef(
+        bundle["source"]["provider"], bundle["source"]["id"], bundle["source"]["id_kind"]
+    )
+    existing = read_checkpoint(cwd, checkpoint_source, target)
     if existing and existing.get("last_handoff_id") == bundle["handoff_id"] and not allow_duplicate:
         raise AgentXferError("DUPLICATE_HANDOFF_BLOCKED", "this handoff was already sent to the target")
     target_adapter = get_adapter(target.provider)
     artifact_dir = Path(bundle["artifact_dir"])
-    send_result = target_adapter.send_handoff(target.id, bundle["generated_handoff_prompt"], cwd, artifact_dir / "target.prompt.md")
-    checkpoint = write_checkpoint(cwd, source, target, bundle["handoff_id"], artifact_dir, send_result.method, bundle["source"]["range"])
+    send_result = target_adapter.send_handoff(
+        target.id, bundle["generated_handoff_prompt"], cwd, artifact_dir / "target.prompt.md"
+    )
+    checkpoint = write_checkpoint(
+        cwd,
+        checkpoint_source,
+        target,
+        bundle["handoff_id"],
+        artifact_dir,
+        send_result.method,
+        bundle["source"]["range"],
+    )
     return {
         "ok": True,
         "handoff_id": bundle["handoff_id"],

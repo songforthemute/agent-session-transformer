@@ -123,6 +123,14 @@ def main(argv: list[str] | None = None) -> int:
         payload = {"ok": False, "code": "INVALID_INPUT", "message": str(exc)}
         _print(payload, args.json)
         return 2
+    except FileNotFoundError as exc:
+        payload = {"ok": False, "code": "LOCAL_TRANSCRIPT_NOT_FOUND", "message": str(exc)}
+        _print(payload, args.json)
+        return 2
+    except OSError as exc:
+        payload = {"ok": False, "code": "LOCAL_IO_ERROR", "message": str(exc)}
+        _print(payload, args.json)
+        return 2
     except RuntimeError as exc:
         payload = {"ok": False, "code": "OPERATION_FAILED", "message": str(exc)}
         _print(payload, args.json)
