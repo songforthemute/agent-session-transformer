@@ -72,3 +72,36 @@ def test_sources_reports_codex_app_server_command(tmp_path: Path, monkeypatch) -
     assert sources["codex"]["available"] is True
     assert sources["codex"]["path"] == "python fake-codex-server.py"
     assert sources["codex"]["reason"] == "AGENT_XFER_CODEX_APP_SERVER_COMMAND is set"
+
+
+def test_sources_deep_discovers_grok_sessions_from_cli_json(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    grok = fake_bin / "grok"
+    grok.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "assert sys.argv[1:] == ['sessions', '--json']\n"
+        "print(json.dumps({'sessions': [{'id': 'grok-session-a'}, {'session_id': 'grok-session-b'}]}))\n",
+        encoding="utf-8",
+    )
+    grok.chmod(grok.stat().st_mode | stat.S_IXUSR)
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+
+    payload = _run_json(["sources", "--cwd", str(tmp_path), "--deep"], tmp_path, env)
+    grok_sources = [item for item in payload["sources"] if item["provider"] == "grok"]
+    assert [item["id"] for item in grok_sources] == ["grok-session-a", "grok-session-b"]
+
+
+def test_sources_deep_discovers_antigravity_brain_transcripts(tmp_path: Path, monkeypatch) -> None:
+    ag_home = tmp_path / "agy"
+    logs = ag_home / "brain" / "conversation-deep" / ".system_generated" / "logs"
+    logs.mkdir(parents=True)
+    transcript = logs / "transcript_full.jsonl"
+    transcript.write_text("", encoding="utf-8")
+    monkeypatch.setenv("AGENT_XFER_ANTIGRAVITY_HOME", str(ag_home))
+
+    payload = _run_json(["sources", "--cwd", str(tmp_path), "--deep"], tmp_path, os.environ.copy())
+    ag_sources = [item for item in payload["sources"] if item["provider"] == "antigravity" and item["id"] == "conversation-deep"]
+    assert ag_sources[0]["path"] == str(transcript)

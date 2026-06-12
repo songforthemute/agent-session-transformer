@@ -193,6 +193,31 @@ python3 -m agent_xfer --json export \
 
 `--to` is optional for export and defaults to `fake:export-target` only as prompt-rendering context. Supplying a real `--to <provider>:<id>` is supported when the exported prompt should name a specific target session, but export still remains read-only.
 
+
+## Milestone 15: live smoke matrix
+
+`scripts/live-smoke.sh` can run either a single dry-run/sync case or a matrix file. Matrix rows are whitespace-separated as `<from> <to> <cwd> [sync]`; rows without `sync` stay read-only.
+
+```bash
+scripts/live-smoke.sh --matrix work/live-matrix.txt
+```
+
+## Milestone 16: target prompt argv guard
+
+Provider target senders now check prompt size before passing the prompt as an argv argument. Set `AGENT_XFER_PROMPT_ARG_MAX` to tune the guard. If the prompt is too large, `agent-xfer` fails before invoking the provider CLI and points at the already-written `target.prompt.md` artifact. Provider-specific stdin/tempfile transports remain future work.
+
+## Milestone 17: Codex app-server retry controls
+
+Codex app-server source reads now honor `AGENT_XFER_CODEX_APP_SERVER_TIMEOUT` and `AGENT_XFER_CODEX_APP_SERVER_RETRIES`. The fixture JSON path still takes precedence, while command-backed reads can retry transient non-zero exits or timeouts.
+
+## Milestone 18: deeper source discovery
+
+`agent-xfer sources --deep` attempts provider-specific local discovery in addition to shallow hints. Current deep discovery includes `grok sessions --json` and Antigravity `brain/<conversation-id>/.system_generated/logs/transcript*.jsonl` transcript directories.
+
+```bash
+python3 -m agent_xfer --json sources --cwd /repo --deep
+```
+
 ## Discovery helpers
 
 `agent-xfer sources` and `agent-xfer targets` provide lightweight discovery and availability hints:
@@ -202,4 +227,4 @@ python3 -m agent_xfer --json sources --cwd /repo
 python3 -m agent_xfer --json targets --cwd /repo
 ```
 
-Discovery is intentionally shallow: it reports fake defaults, CLI availability, environment-backed fixture paths, and Antigravity `last_conversations.json` cwd matches. Provider IDs should still be supplied explicitly for real sync flows.
+Default discovery is intentionally shallow: it reports fake defaults, CLI availability, environment-backed fixture paths, and Antigravity `last_conversations.json` cwd matches. Use `sources --deep` for best-effort provider-specific local session discovery. Provider IDs should still be supplied explicitly for real sync flows.

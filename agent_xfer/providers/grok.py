@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_xfer.core.models import InspectResult, ProviderCapabilities, ReadSessionResult, SendResult
 from agent_xfer.parsing.grok_trace import parse_grok_trace_archive
 from agent_xfer.parsing.markdown_transcript import parse_grok_export_markdown
+from agent_xfer.subprocesses.prompt_transport import ensure_prompt_fits_argv
 from agent_xfer.subprocesses.runner import run_command
 
 
@@ -92,6 +93,7 @@ class GrokAdapter:
 
     def send_handoff(self, target_id: str, prompt: str, cwd: Path, artifact_path: Path | None = None) -> SendResult:
         _write_prompt_artifact(artifact_path, prompt)
+        ensure_prompt_fits_argv(prompt, provider=self.provider, artifact_path=artifact_path)
         result = run_command(["grok", "-r", target_id, "-p", prompt, "--cwd", str(cwd)], cwd=cwd)
         if result.returncode != 0:
             raise RuntimeError(f"grok resume failed with exit {result.returncode}: {result.stderr.strip()}")

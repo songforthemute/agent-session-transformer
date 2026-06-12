@@ -236,3 +236,18 @@ def test_export_writes_requested_bundle_and_prompt_paths_without_checkpoint(tmp_
     }
     assert "# Agent Handoff" in prompt_out.read_text(encoding="utf-8")
     assert not (tmp_path / ".agent-xfer" / "checkpoints").exists()
+
+
+def test_live_smoke_script_matrix_runs_dry_run_rows(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    matrix = tmp_path / "matrix.txt"
+    matrix.write_text(f"# comment\nfake:source-1 fake:target-1 {tmp_path}\n", encoding="utf-8")
+    result = subprocess.run(
+        [str(root / "scripts" / "live-smoke.sh"), "--matrix", str(matrix)],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "handoff_id" in result.stdout

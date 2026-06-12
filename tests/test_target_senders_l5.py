@@ -76,3 +76,39 @@ def test_antigravity_sender_invokes_conversation_print(tmp_path: Path) -> None:
     assert "# Agent Handoff" in argv[3]
     assert argv[-2:] == ["--print-timeout", "30s"]
     assert payload["send_result"]["method"] == "agy-conversation-print"
+
+
+def test_sender_blocks_oversized_argv_prompt_before_invoking_provider(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_path = tmp_path / "codex.json"
+    _write_recorder(fake_bin / "codex", "codex", log_path)
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+    env["AGENT_XFER_PROMPT_ARG_MAX"] = "10"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_xfer",
+            "--json",
+            "sync",
+            "--from",
+            "fake:source-1",
+            "--to",
+            "codex:thread-1",
+            "--cwd",
+            str(tmp_path),
+            "--confirm",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["code"] == "OPERATION_FAILED"
+    assert "AGENT_XFER_PROMPT_ARG_MAX=10" in payload["message"]
+    assert not log_path.exists()

@@ -156,3 +156,31 @@ def test_codex_adapter_reads_thread_via_app_server_command(tmp_path: Path, monke
     assert result.read_method == "codex-app-server-thread-read"
     assert result.raw_artifacts[0]["kind"] == "codex-app-server-thread-read"
     assert len(result.events) == 4
+
+
+def test_codex_app_server_retries_after_transient_failure(tmp_path: Path, monkeypatch) -> None:
+    server = tmp_path / "retrying-codex-app-server.py"
+    marker = tmp_path / "attempted"
+    payload = json.loads((FIXTURES / "codex" / "thread_read_basic.json").read_text(encoding="utf-8"))
+    server.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, pathlib, sys\n"
+        f"marker = pathlib.Path({str(marker)!r})\n"
+        "request = json.loads(sys.stdin.readline())\n"
+        "if not marker.exists():\n"
+        "    marker.write_text('1')\n"
+        "    print('transient failure', file=sys.stderr)\n"
+        "    raise SystemExit(3)\n"
+        f"payload = {json.dumps(payload)!r}\n"
+        "print(json.dumps({'jsonrpc': '2.0', 'id': request.get('id'), 'result': json.loads(payload)}))\n",
+        encoding="utf-8",
+    )
+    server.chmod(server.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.delenv("AGENT_XFER_CODEX_THREAD_READ_JSON", raising=False)
+    monkeypatch.setenv("AGENT_XFER_CODEX_APP_SERVER_COMMAND", f"{sys.executable} {server}")
+    monkeypatch.setenv("AGENT_XFER_CODEX_APP_SERVER_RETRIES", "1")
+
+    result = CodexAdapter().read_session("019eb0b6-3e60-76d1-a573-6f9da5937d36", tmp_path)
+
+    assert result.read_method == "codex-app-server-thread-read"
+    assert len(result.events) == 4

@@ -75,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sources_parser = sub.add_parser("sources", help="list discoverable source sessions or hints")
     sources_parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    sources_parser.add_argument("--deep", action="store_true", help="attempt provider-specific local session discovery")
 
     targets_parser = sub.add_parser("targets", help="list target providers or hints")
     targets_parser.add_argument("--cwd", type=Path, default=Path.cwd())
@@ -105,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "sync":
             _print(sync(args.source, args.target, args.cwd, args.confirm, args.allow_duplicate, args.max_prompt_chars, args.range), args.json)
         elif args.command == "sources":
-            _print({"ok": True, "sources": discover_sources(args.cwd)}, args.json)
+            _print({"ok": True, "sources": discover_sources(args.cwd, args.deep)}, args.json)
         elif args.command == "targets":
             _print({"ok": True, "targets": discover_targets(args.cwd)}, args.json)
         else:

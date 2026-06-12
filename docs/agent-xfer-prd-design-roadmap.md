@@ -951,6 +951,8 @@ pytest -m live_antigravity
 pytest -m live_claude
 ```
 
+`scripts/live-smoke.sh --matrix <file>`는 `<from> <to> <cwd> [sync]` 형식의 matrix row를 순차 실행한다. `sync`가 없는 row는 dry-run만 수행해 target mutation을 피한다.
+
 ### 8.4 Security tests
 
 - prompt에 private key block이 남지 않는지 검사.
@@ -973,14 +975,15 @@ pytest -m live_claude
 - Codex, Grok, Antigravity target send.
 - `sync --confirm`.
 - checkpoint duplicate guard. 현재 checkpoint는 `last_source_range`를 기록해 `--range since-last` incremental handoff의 기준점으로 사용된다.
-- local live smoke 문서화.
+- local live smoke 문서화. 현재 단일 case와 matrix file(`scripts/live-smoke.sh --matrix`)을 지원한다.
+- target prompt argv guard. 현재 `AGENT_XFER_PROMPT_ARG_MAX`를 초과하면 provider CLI 호출 전 안전하게 실패한다.
 
 ### v0.3.0: Robust provider support
 
-- Codex app-server lifecycle 안정화. 현재 `AGENT_XFER_CODEX_APP_SERVER_COMMAND`가 설정된 경우 JSON-RPC `thread/read` 요청을 실행해 app-server response를 직접 읽고, fixture path(`AGENT_XFER_CODEX_THREAD_READ_JSON`)는 우선순위 높은 deterministic fallback으로 유지한다.
+- Codex app-server lifecycle 안정화. 현재 `AGENT_XFER_CODEX_APP_SERVER_COMMAND`가 설정된 경우 JSON-RPC `thread/read` 요청을 실행해 app-server response를 직접 읽고, fixture path(`AGENT_XFER_CODEX_THREAD_READ_JSON`)는 우선순위 높은 deterministic fallback으로 유지한다. Timeout/retry는 `AGENT_XFER_CODEX_APP_SERVER_TIMEOUT`/`AGENT_XFER_CODEX_APP_SERVER_RETRIES`로 제어한다.
 - Grok trace optional enrich. 현재는 `AGENT_XFER_GROK_TRACE_ARCHIVE=/path/to/trace.tar.gz`가 설정된 경우 `chat_history.jsonl`을 우선 파싱하고, 없으면 `summary.json`의 Markdown-like summary로 fallback하는 source path를 지원한다.
 - Antigravity path resolver 강화. 현재 `antigravity:last|cwd|current` alias를 `cache/last_conversations.json`의 cwd mapping으로 해석하고, `AGENT_XFER_ANTIGRAVITY_TRANSCRIPT` fixture override를 지원한다.
-- sources/targets command 개선. 현재는 shallow discovery로 fake defaults, CLI availability, env-backed paths, Antigravity last_conversations cwd match를 제공한다.
+- sources/targets command 개선. 현재는 shallow discovery로 fake defaults, CLI availability, env-backed paths, Antigravity last_conversations cwd match를 제공한다. `sources --deep`은 Grok `sessions --json`과 Antigravity brain transcripts를 추가로 탐색한다.
 - Incremental range selection. 현재 `dry-run`/`sync`에서 `--range all|since-last`를 지원하며, `since-last`는 같은 source/target checkpoint 이후의 event만 포함하고 새 event가 없으면 `NO_NEW_EVENTS`로 중단한다.
 
 ### v0.4.0: Claude experimental
@@ -1018,9 +1021,9 @@ pytest -m live_claude
 
 ## 12. 남은 질문
 
-- Codex app-server protocol을 CLI에서 장시간 띄울 때 timeout/retry 정책은 어떻게 둘 것인가?
-- target prompt를 argv로 넘길 때 길이 제한에 걸리면 provider별 stdin/tempfile 대체 경로가 있는가?
+- Codex app-server protocol을 CLI에서 장시간 띄울 때 timeout/retry 정책은 어떻게 둘 것인가? 현재 one-shot command read에 `AGENT_XFER_CODEX_APP_SERVER_TIMEOUT`/`AGENT_XFER_CODEX_APP_SERVER_RETRIES`를 제공한다.
+- target prompt를 argv로 넘길 때 길이 제한에 걸리면 provider별 stdin/tempfile 대체 경로가 있는가? 현재는 `AGENT_XFER_PROMPT_ARG_MAX` guard로 provider CLI 호출 전 실패시킨다.
 - redaction strict mode에서 내부 path를 어디까지 보존할 것인가?
-- `sources`/`targets` command가 provider별 session list를 어느 깊이까지 지원해야 하는가?
+- `sources`/`targets` command가 provider별 session list를 어느 깊이까지 지원해야 하는가? 현재 `sources --deep`은 Grok `sessions --json`과 Antigravity brain transcript directory를 지원한다.
 - Claude SDK의 실제 method 이름과 auth behavior를 구현 시점에 어떤 version에 pin할 것인가?
 - Antigravity transcript schema 변경을 감지하기 위한 healthcheck signature를 어떻게 정의할 것인가?
